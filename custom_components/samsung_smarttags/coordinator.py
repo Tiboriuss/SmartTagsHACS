@@ -17,8 +17,6 @@ from .samsung_client import SmartTagsAuthError, SmartTagsClient, SmartTagsClient
 
 _LOGGER = logging.getLogger(__name__)
 
-type SamsungSmartTagsConfigEntry = ConfigEntry[SamsungSmartTagsData]
-
 
 class SamsungSmartTagsData:
     """Runtime data for Samsung SmartTags integration."""
@@ -36,8 +34,6 @@ class SamsungSmartTagsData:
 
 class SmartTagsCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Coordinator to fetch Smart Tag locations."""
-
-    config_entry: SamsungSmartTagsConfigEntry
 
     def __init__(
         self,
