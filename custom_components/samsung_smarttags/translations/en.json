@@ -28,5 +28,16 @@
     "abort": {
       "already_configured": "This Samsung account is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Samsung SmartTags Options",
+        "description": "Configure the polling interval for location updates.",
+        "data": {
+          "scan_interval": "Polling interval (minutes)"
+        }
+      }
+    }
   }
 }

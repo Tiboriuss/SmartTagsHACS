@@ -3,20 +3,28 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_COUNTRY_CODE, CONF_E2E_PIN, CONF_LANGUAGE, CONF_TOKENS
+from .const import (
+    CONF_COUNTRY_CODE,
+    CONF_E2E_PIN,
+    CONF_LANGUAGE,
+    CONF_SCAN_INTERVAL,
+    CONF_TOKENS,
+    DEFAULT_SCAN_INTERVAL,
+)
 from .coordinator import SamsungSmartTagsData, SmartTagsCoordinator
 from .samsung_auth import SamsungAuth
 from .samsung_client import SmartTagsClient
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER]
+PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -57,7 +65,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Listen for options updates to change polling interval
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update — adjust polling interval."""
+    runtime_data: SamsungSmartTagsData = entry.runtime_data
+    new_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    runtime_data.coordinator.update_interval = timedelta(minutes=new_interval)
+    _LOGGER.info("Polling interval updated to %s minutes", new_interval)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

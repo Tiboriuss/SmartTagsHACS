@@ -59,5 +59,8 @@ CONF_LANGUAGE = "language"
 CONF_E2E_PIN = "e2e_pin"
 CONF_TOKENS = "tokens"
 
+# Options keys
+CONF_SCAN_INTERVAL = "scan_interval"
+
 # Default polling interval in minutes
-DEFAULT_SCAN_INTERVAL = 15
+DEFAULT_SCAN_INTERVAL = 5

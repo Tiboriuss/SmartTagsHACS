@@ -192,8 +192,31 @@ class SmartTagsClient:
         )
         return result if isinstance(result, dict) else {}
 
+    async def get_location_history(
+        self,
+        device_id: str,
+        start_time: int | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Get location history for a tag since start_time (ms epoch).
+
+        Returns list of geolocation dicts ordered ascending by time.
+        """
+        query = f"?order=asc&isSummary=false&limit={limit}"
+        if start_time is not None:
+            query += f"&startTime={start_time}"
+
+        result = await self._proxy_request(
+            "GET",
+            "/trackerapi",
+            extra_uri=f"/trackers/{device_id}/geolocations{query}",
+        )
+        if isinstance(result, dict):
+            return result.get("geolocations") or result.get("geoLocations", [])
+        return []
+
     async def get_all_tag_data(self) -> dict[str, dict[str, Any]]:
-        """Fetch all tracker devices and their current locations.
+        """Fetch all tracker devices and their current locations (single point).
 
         Returns dict keyed by device_id with tag info + location data.
         """
@@ -299,3 +322,235 @@ class SmartTagsClient:
             return float(val)
         except (ValueError, TypeError):
             return None
+
+    def _parse_geo(
+        self, geo: dict[str, Any], key_pairs: list[dict]
+    ) -> dict[str, Any] | None:
+        """Parse a single geolocation entry into a standard dict."""
+        lat_raw = geo.get("latitude", "0")
+        lon_raw = geo.get("longitude", "0")
+
+        try:
+            lat, lon = float(lat_raw), float(lon_raw)
+        except (ValueError, TypeError):
+            lat, lon = self._decrypt_location(
+                str(lat_raw), str(lon_raw), key_pairs
+            )
+
+        if lat == 0.0 and lon == 0.0:
+            return None
+
+        timestamp_ms = geo.get("lastUpdateTime")
+        if isinstance(timestamp_ms, str):
+            try:
+                timestamp_ms = int(timestamp_ms)
+            except (ValueError, TypeError):
+                timestamp_ms = None
+
+        return {
+            "latitude": lat,
+            "longitude": lon,
+            "accuracy": self._safe_float(geo.get("accuracy")),
+            "battery_level": geo.get("battery") or geo.get("batteryLevel"),
+            "timestamp_ms": timestamp_ms,
+        }
+
+    async def get_all_tag_data_with_history(
+        self,
+        last_poll_timestamps: dict[str, int],
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch all tracker devices with location history since last poll.
+
+        Returns dict keyed by device_id with:
+          - name, model_name, device_id
+          - locations: list of {latitude, longitude, accuracy, battery_level, timestamp_ms}
+                       ordered ascending by time
+        """
+        trackers = await self.get_tracker_list()
+        result: dict[str, dict[str, Any]] = {}
+
+        for tracker in trackers:
+            device_id = tracker.get("stDid") or tracker.get("deviceId", "")
+            if not device_id:
+                continue
+
+            name = tracker.get("stDevName", device_id)
+            model_name = tracker.get("modelName", "SmartTag")
+
+            tag_data: dict[str, Any] = {
+                "name": name,
+                "model_name": model_name,
+                "device_id": device_id,
+                "locations": [],
+            }
+
+            try:
+                # Get current location (for E2E key pairs)
+                loc_result = await self.get_location(device_id)
+                key_pairs = loc_result.get("keyPairs", [])
+
+                # Determine start_time for history fetch
+                start_time = last_poll_timestamps.get(device_id)
+
+                # Fetch history since last poll
+                history_geos = await self.get_location_history(
+                    device_id, start_time=start_time
+                )
+
+                locations: list[dict[str, Any]] = []
+                for geo in history_geos:
+                    parsed = self._parse_geo(geo, key_pairs)
+                    if parsed:
+                        locations.append(parsed)
+
+                # Also include current location from the geolocation endpoint
+                # (may be newer than last history entry)
+                items = loc_result.get("items", [])
+                for item in items:
+                    if item.get("deviceId") != device_id:
+                        continue
+                    geos = item.get("geolocations") or item.get("geoLocations", [])
+                    for geo in geos:
+                        parsed = self._parse_geo(geo, key_pairs)
+                        if parsed:
+                            locations.append(parsed)
+
+                # Deduplicate by timestamp_ms and sort ascending
+                seen_ts: set[int | None] = set()
+                unique_locations: list[dict[str, Any]] = []
+                for loc in locations:
+                    ts = loc.get("timestamp_ms")
+                    if ts in seen_ts and ts is not None:
+                        continue
+                    seen_ts.add(ts)
+                    unique_locations.append(loc)
+
+                unique_locations.sort(
+                    key=lambda x: x.get("timestamp_ms") or 0
+                )
+                tag_data["locations"] = unique_locations
+
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to get location history for %s", device_id
+                )
+
+            result[device_id] = tag_data
+
+        return result
+
+    def _parse_geo(
+        self, geo: dict[str, Any], key_pairs: list[dict]
+    ) -> dict[str, Any] | None:
+        """Parse a single geolocation entry into a standard dict."""
+        lat_raw = geo.get("latitude", "0")
+        lon_raw = geo.get("longitude", "0")
+
+        try:
+            lat, lon = float(lat_raw), float(lon_raw)
+        except (ValueError, TypeError):
+            lat, lon = self._decrypt_location(
+                str(lat_raw), str(lon_raw), key_pairs
+            )
+
+        if lat == 0.0 and lon == 0.0:
+            return None
+
+        timestamp_ms = geo.get("lastUpdateTime")
+        if isinstance(timestamp_ms, str):
+            try:
+                timestamp_ms = int(timestamp_ms)
+            except (ValueError, TypeError):
+                timestamp_ms = None
+
+        return {
+            "latitude": lat,
+            "longitude": lon,
+            "accuracy": self._safe_float(geo.get("accuracy")),
+            "battery_level": geo.get("battery") or geo.get("batteryLevel"),
+            "timestamp_ms": timestamp_ms,
+        }
+
+    async def get_all_tag_data_with_history(
+        self,
+        last_poll_timestamps: dict[str, int],
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch all tracker devices with location history since last poll.
+
+        Returns dict keyed by device_id with:
+          - name, model_name, device_id
+          - locations: list of {latitude, longitude, accuracy, battery_level, timestamp_ms}
+                       ordered ascending by time
+        """
+        trackers = await self.get_tracker_list()
+        result: dict[str, dict[str, Any]] = {}
+
+        for tracker in trackers:
+            device_id = tracker.get("stDid") or tracker.get("deviceId", "")
+            if not device_id:
+                continue
+
+            name = tracker.get("stDevName", device_id)
+            model_name = tracker.get("modelName", "SmartTag")
+
+            tag_data: dict[str, Any] = {
+                "name": name,
+                "model_name": model_name,
+                "device_id": device_id,
+                "locations": [],
+            }
+
+            try:
+                # Get current location (for E2E key pairs)
+                loc_result = await self.get_location(device_id)
+                key_pairs = loc_result.get("keyPairs", [])
+
+                # Determine start_time for history fetch
+                start_time = last_poll_timestamps.get(device_id)
+
+                # Fetch history since last poll
+                history_geos = await self.get_location_history(
+                    device_id, start_time=start_time
+                )
+
+                locations: list[dict[str, Any]] = []
+                for geo in history_geos:
+                    parsed = self._parse_geo(geo, key_pairs)
+                    if parsed:
+                        locations.append(parsed)
+
+                # Also include current location from the geolocation endpoint
+                # (may be newer than last history entry)
+                items = loc_result.get("items", [])
+                for item in items:
+                    if item.get("deviceId") != device_id:
+                        continue
+                    geos = item.get("geolocations") or item.get("geoLocations", [])
+                    for geo in geos:
+                        parsed = self._parse_geo(geo, key_pairs)
+                        if parsed:
+                            locations.append(parsed)
+
+                # Deduplicate by timestamp_ms and sort ascending
+                seen_ts: set[int | None] = set()
+                unique_locations: list[dict[str, Any]] = []
+                for loc in locations:
+                    ts = loc.get("timestamp_ms")
+                    if ts in seen_ts and ts is not None:
+                        continue
+                    seen_ts.add(ts)
+                    unique_locations.append(loc)
+
+                unique_locations.sort(
+                    key=lambda x: x.get("timestamp_ms") or 0
+                )
+                tag_data["locations"] = unique_locations
+
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to get location history for %s", device_id
+                )
+
+            result[device_id] = tag_data
+
+        return result
