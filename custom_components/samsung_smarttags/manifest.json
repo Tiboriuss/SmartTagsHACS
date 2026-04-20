@@ -6,6 +6,6 @@
   "documentation": "https://github.com/Tiboriuss/SmartTagsHACS",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Tiboriuss/SmartTagsHACS/issues",
-  "requirements": ["pycryptodome==3.21.0", "eciespy==0.4.2"],
+  "requirements": ["pycryptodome==3.21.0"],
   "version": "1.0.0"
 }

@@ -226,8 +226,56 @@ def decrypt_e2e_location(
 
     decrypted_privkey = unpad(cipher.decrypt(encrypted_privkey), AES.block_size)
 
-    import ecies
-
-    dec_lat = ecies.decrypt(decrypted_privkey, base64.b64decode(lat_enc))
-    dec_lon = ecies.decrypt(decrypted_privkey, base64.b64decode(lon_enc))
+    dec_lat = _ecies_decrypt(decrypted_privkey, base64.b64decode(lat_enc))
+    dec_lon = _ecies_decrypt(decrypted_privkey, base64.b64decode(lon_enc))
     return float(dec_lat.decode()), float(dec_lon.decode())
+
+
+def _ecies_decrypt(private_key_bytes: bytes, encrypted_msg: bytes) -> bytes:
+    """ECIES decrypt compatible with eciespy format.
+
+    Uses the cryptography library (built into HA) instead of eciespy/coincurve
+    which requires compiling native C extensions.
+    """
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    # Parse ephemeral public key from the encrypted message
+    if encrypted_msg[0] == 4:  # uncompressed: 04 || x || y
+        pubkey_len = 65
+    elif encrypted_msg[0] in (2, 3):  # compressed: 02/03 || x
+        pubkey_len = 33
+    else:
+        raise ValueError(f"Invalid ECIES public key prefix: {encrypted_msg[0]}")
+
+    ephemeral_pubkey_bytes = encrypted_msg[:pubkey_len]
+    encrypted_data = encrypted_msg[pubkey_len:]
+
+    # Load the receiver's private key (secp256k1)
+    private_key = ec.derive_private_key(
+        int.from_bytes(private_key_bytes, "big"),
+        ec.SECP256K1(),
+    )
+
+    # Load the ephemeral public key
+    ephemeral_pubkey = ec.EllipticCurvePublicKey.from_encoded_point(
+        ec.SECP256K1(), ephemeral_pubkey_bytes
+    )
+
+    # ECDH: shared secret = x-coordinate of (ephemeral_pub * private_key)
+    shared_secret = private_key.exchange(ec.ECDH(), ephemeral_pubkey)
+
+    # Derive AES-256 key via HKDF-SHA256 (matching eciespy's decapsulate)
+    aes_key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=None,
+    ).derive(shared_secret)
+
+    # AES-256-GCM decrypt: nonce (16 bytes) + ciphertext + tag (16 bytes)
+    nonce = encrypted_data[:16]
+    ciphertext_with_tag = encrypted_data[16:]
+    return AESGCM(aes_key).decrypt(nonce, ciphertext_with_tag, None)
