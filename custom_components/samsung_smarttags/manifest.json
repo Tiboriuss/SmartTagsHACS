@@ -1,0 +1,11 @@
+{
+  "domain": "samsung_smarttags",
+  "name": "Samsung SmartTags",
+  "codeowners": ["@Tiboriuss"],
+  "config_flow": true,
+  "documentation": "https://github.com/Tiboriuss/SmartTagsHACS",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Tiboriuss/SmartTagsHACS/issues",
+  "requirements": ["pycryptodome==3.21.0", "eciespy==0.4.2"],
+  "version": "1.0.0"
+}
