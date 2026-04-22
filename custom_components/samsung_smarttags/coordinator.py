@@ -104,6 +104,8 @@ class SmartTagsCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         """Fetch data, raising on error."""
         try:
             return await self._client.get_all_tag_data_with_history(poll_timestamps)
+        except SmartTagsAuthError:
+            raise
         except SmartTagsClientError as err:
             raise UpdateFailed(f"Error fetching tag data: {err}") from err
 
