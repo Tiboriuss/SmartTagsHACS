@@ -10,7 +10,7 @@ Track your Samsung Galaxy SmartTag / SmartTag2 devices in Home Assistant, just l
 - **GPS coordinates** — latitude, longitude, and accuracy
 - **Battery level** — reported as a device tracker attribute
 - **E2E decryption** — supports end-to-end encrypted tag locations (optional PIN)
-- **Automatic polling** — locations update every 15 minutes via the Samsung SmartThings API
+- **Automatic polling** — locations update every 5 minutes via the Samsung SmartThings API
 
 ## Requirements
 

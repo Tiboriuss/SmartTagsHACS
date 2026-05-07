@@ -32,7 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
 
     tokens = entry.data[CONF_TOKENS]
-    country_code = entry.data.get(CONF_COUNTRY_CODE, "us")
+    country_code = entry.data.get(CONF_COUNTRY_CODE, "de")
     language = entry.data.get(CONF_LANGUAGE, "en")
     e2e_pin = entry.data.get(CONF_E2E_PIN, "")
 

@@ -1,9 +1,5 @@
 """Constants for the Samsung SmartTags integration."""
 
-from logging import Logger, getLogger
-
-LOGGER: Logger = getLogger(__package__)
-
 DOMAIN = "samsung_smarttags"
 
 # Samsung Account client IDs (matching uTag constants)
@@ -64,3 +60,11 @@ CONF_SCAN_INTERVAL = "scan_interval"
 
 # Default polling interval in minutes
 DEFAULT_SCAN_INTERVAL = 5
+
+# Samsung API returns battery as string enums — map to int for HA
+BATTERY_LEVEL_MAP: dict[str, int] = {
+    "FULL": 3,
+    "MEDIUM": 2,
+    "LOW": 1,
+    "VERY_LOW": 0,
+}
